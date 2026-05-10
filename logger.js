@@ -6,7 +6,7 @@ function getTimeStamp(timestamp){
 }
 export function error(err, table_name){
   try{
-    console.error(`${getTimeStamp(Date.now())} ERROR [data-cache] ${err}`)
+    console.error(`${getTimeStamp(Date.now())} ERROR [mongo-cache] ${err}`)
     if(err?.stack && logLevel == 'debug') console.error(err)
   }catch(e){
     console.error(e)
@@ -14,7 +14,7 @@ export function error(err, table_name){
 }
 export function info(msg, table_name){
   try{
-    console.log(`${getTimeStamp(Date.now())} INFO [data-cache] ${msg}`)
+    console.log(`${getTimeStamp(Date.now())} INFO [mongo-cache] ${msg}`)
   }catch(e){
     console.error(e)
   }
