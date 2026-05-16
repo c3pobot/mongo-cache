@@ -17,6 +17,8 @@
   },
   "homepage": "https://github.com/c3pobot/mongo-cache#readme",
   "dependencies": {
-    "mongodb": "^7.2.0"
+    "@mongodb-js/zstd": "^7.0.0",
+    "mongodb": "^7.2.0",
+    "snappy": "^7.3.3"
   }
 }
