@@ -3,9 +3,9 @@ const log = require('./logger')
 const { MongoClient } = require("mongodb");
 
 module.exports = class MongoCache {
-  constructor({ connection_string, db_name, collections, cache_name }){
+  constructor({ connection_string, collections, cache_name, db_name }){
     if(!db_name) throw `No db_name provided`
-    if(cacheName) log.setCacheName(cache_name || db_name)
+    this.cache_name = cache_name || db_name
     this._mongo = new MongoClient(connection_string)
     this._mongo_ready = false, this._collections = collections || [],  this._dbo = this._mongo.db(db_name)
     this._init()
@@ -15,12 +15,12 @@ module.exports = class MongoCache {
       await this._mongo.connect()
       let status = await this._mongo.db('admin').command({ ping: 1 })
       if(status.ok > 0){
-        log.info(`mongo-local connection successful...`)
+        log.info(`connection successful...`, this.cache_name)
         return this._createTables()
       }
       setTimeout(this._init, 5000)
     }catch(e){
-      log.error(e)
+      log.error(e, this.cache_name)
       setTimeout(this._init, 5000)
     }
   }
@@ -30,13 +30,13 @@ module.exports = class MongoCache {
       for(let i in this._collections){
         if(!this._collections[i].expireSeconds) continue
         await this._dbo.collection(this._collections[i].name)?.createIndex({ TTL: 1 }, { name: '_TTL', expireAfterSeconds: this._collections[i].expireSeconds } )
-        log.info(`Create TTL index for collection ${this._collections[i].name}`)
+        log.info(`Created TTL index for collection ${this._collections[i].name}`, )
       }
       this._mongo_ready = true
       return
       setTimeout(this._createTables, 5000)
     }catch(e){
-      log.error(e)
+      log.error(e, this.cache_name)
       setTimeout(this._createTables, 5000)
     }
   }
@@ -46,35 +46,35 @@ module.exports = class MongoCache {
       if(matchCondition) data.unshift({$match: matchCondition})
       return await this._dbo.collection(collection).aggregate(data, { allowDiskUse: true }).toArray()
     }catch(e){
-      log.error(e)
+      log.error(e, this.cache_name)
     }
   }
   async all( collection, matchCondition, project ){
     try{
       return await this._dbo.collection( collection ).find( matchCondition, { projection: project } ).toArray()
     }catch(e){
-      log.error(e)
+      log.error(e, this.cache_name)
     }
   }
   async del( collection, matchCondition ){
     try{
       return await this._dbo.collection(collection).deleteOne(matchCondition)
     }catch(e){
-      log.error(e)
+      log.error(e, this.cache_name)
     }
   }
   async delMany( collection, matchCondition ){
     try{
       return await this._dbo.collection(collection).deleteMany(matchCondition)
     }catch(e){
-      log.error(e)
+      log.error(e, this.cache_name)
     }
   }
   async count( collection, matchCondition ){
     try{
       return await this._dbo.collection( collection ).countDocuments(matchCondition)
     }catch(e){
-      log.error(e)
+      log.error(e, this.cache_name)
     }
   }
   async createIndex(collection, indexObj, opts = {}){
@@ -83,7 +83,7 @@ module.exports = class MongoCache {
       //opts = { background: true, expireAfterSeconds: 600 }
       return await this._dbo.collection( collection ).createIndex(indexObj, opts)
     }catch(e){
-      log.error(e)
+      log.error(e, this.cache_name)
     }
   }
   async dropIndex( collection, indexName){
@@ -92,7 +92,7 @@ module.exports = class MongoCache {
       let res = await this._dbo.collection( collection ).dropIndex(indexName)
       if(res?.ok) return true
     }catch(e){
-      log.error(e)
+      log.error(e, this.cache_name)
     }
   }
   async get(collection, matchCondition, project){
@@ -100,7 +100,7 @@ module.exports = class MongoCache {
       let res = await this._dbo.collection( collection ).find( matchCondition, { projection: project } ).toArray()
       if(res?.length > 0) return res[0]
     }catch(e){
-      log.error(e)
+      log.error(e, this.cache_name)
     }
   }
 
@@ -108,7 +108,7 @@ module.exports = class MongoCache {
     try{
       return await this._dbo.collection( collection ).listIndexes().toArray()
     }catch(e){
-      log.error(e)
+      log.error(e, this.cache_name)
     }
   }
 
@@ -116,7 +116,7 @@ module.exports = class MongoCache {
     try{
       return await this._dbo.collection( collection ).find( matchCondition, { projection: project } ).limit( limitCount ).toArray()
     }catch(e){
-      log.error(e)
+      log.error(e, this.cache_name)
     }
   }
 
@@ -128,7 +128,7 @@ module.exports = class MongoCache {
       delete data.TTL
       return res?.acknowledged
     }catch(e){
-      log.error(e)
+      log.error(e, this.cache_name)
     }
   }
   async updateIndex( collection, keys, opts ){
@@ -138,8 +138,8 @@ module.exports = class MongoCache {
       let indexCollection = collections.find(x=>x.name == collection)
       if(!indexCollection?.name){
         let created = await this._dbo.createCollection(collection)
-        if(created?.s?.namespace?.collection !== collection) return log.error(`error creating collection ${collection}...`)
-        log.debug(`collection ${collection} created...`)
+        if(created?.s?.namespace?.collection !== collection) return log.error(`error creating collection ${collection}...`, this.cache_name)
+        log.debug(`collection ${collection} created...`, this.cache_name)
       }
       let indexes = await this.listIndexes( collection )
       let index = indexes?.find(x=>x.name == opts.name)
@@ -150,15 +150,15 @@ module.exports = class MongoCache {
       }
       if(index?.name){
         let dropped = await this.dropIndex(collection, opts.name)
-        if(!dropped) return log.error(`error dropping index index ${opts.name} for ${collection}...`)
-        log.debug(`dropped ${collection} index ${opts.name}...`)
+        if(!dropped) return log.error(`error dropping index index ${opts.name} for ${collection}...`, this.cache_name)
+        log.debug(`dropped ${collection} index ${opts.name}...`, this.cache_name)
       }
       let indexName = await this.createIndex( collection, keys, opts)
-      if(!indexName || indexName !== opts.name) return log.error(`error creating index ${opts.name} for ${collection}`)
-      log.debug(`created index ${opts.name} for ${collection}...`)
+      if(!indexName || indexName !== opts.name) return log.error(`error creating index ${opts.name} for ${collection}`, this.cache_name)
+      log.debug(`created index ${opts.name} for ${collection}...`, this.cache_name)
       return true
     }catch(e){
-      log.error(e)
+      log.error(e, this.cache_name)
     }
   }
   status(){
