@@ -119,7 +119,13 @@ module.exports = class MongoCache {
       log.error(e, this.cache_name)
     }
   }
-
+  async push( collection, matchCondition, data){
+    try{
+      return await dbo.collection( collection ).updateOne( matchCondition, { $push: data, $set: { TTL: new Date()} }, { upsert:true } )
+    }catch(e){
+      log.error(e, this.cache_name)
+    }
+  }
   async set( collection, matchCondition, data ){
     try{
       if(!data || !matchCondition || !collection) return
