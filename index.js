@@ -121,7 +121,18 @@ module.exports = class MongoCache {
   }
   async push( collection, matchCondition, data){
     try{
-      return await dbo.collection( collection ).updateOne( matchCondition, { $push: data, $set: { TTL: new Date()} }, { upsert:true } )
+      return await this._dbo.collection( collection ).updateOne( matchCondition, { $push: data, $set: { TTL: new Date()} }, { upsert:true } )
+    }catch(e){
+      log.error(e, this.cache_name)
+    }
+  }
+  async replace( collection, matchCondition, data){
+    try{
+      if(!data || !matchCondition || !collection) return
+      if(!data?.TTL) data.TTL = new Date()
+      let res = await this._dbo.collection( collection ).replaceOne( matchCondition, { $set: data }, { upsert: true } )
+      delete data.TTL
+      return res?.acknowledged
     }catch(e){
       log.error(e, this.cache_name)
     }

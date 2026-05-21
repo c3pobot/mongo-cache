@@ -6,6 +6,7 @@ function getTimeStamp(timestamp){
 }
 function error(msg, cache_name){
   try{
+    if(msg?.name?.toLowerCase().includes('mongonetworkerror') && logLevel !== 'debug') return
     console.error(`${getTimeStamp(Date.now())} ERROR [${cache_name}] ${msg}`)
     if(msg?.stack && logLevel == 'debug') console.error(msg)
   }catch(e){
