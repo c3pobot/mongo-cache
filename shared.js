@@ -13,23 +13,22 @@ async function init(){
     }
     setTimeout(init, 5000)
   }catch(e){
-    log.error(e, this.cache_name)
+    log.error(e, 'mongo-shared')
     setTimeout(init, 5000)
   }
 }
-module.exports.connect = (connection_string)=>{
+function connect(connection_string){
   if(!connection_string) return
   mongo = new MongoClient(connection_string)
   init()
 }
-module.exports.status = ()=>{
+function status(){
   return mongo_ready
 }
-
-module.exports.client = class{
+class client{
   constructor({ cache_name, db_name }){
     if(!db_name) throw `No db_name provided`
-    this.cache_name = cache_name || db_name, this._db
+    this.cache_name = cache_name || db_name, this._db = db_name
   }
 
   async aggregate( collection, matchCondition, data = []){
@@ -173,3 +172,4 @@ module.exports.client = class{
     return mongo_ready
   }
 }
+module.exports = { connect, status, client }

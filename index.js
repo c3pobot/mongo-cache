@@ -1,10 +1,8 @@
 const log = require('./logger')
 const { MongoClient } = require("mongodb");
-const shared = require('./shared')
 
-module.exports.MongoCacheShared = shared
-
-module.exports = class MongoCache {
+const MongoCacheShared = require('./shared');
+class MongoCache {
   constructor({ connection_string, collections, cache_name, db_name, shared }){
     if(!db_name) throw `No db_name provided`
     this.cache_name = cache_name || db_name, this._shared = shared, this._dbo
@@ -189,3 +187,5 @@ module.exports = class MongoCache {
     return this._mongo_ready
   }
 }
+module.exports.MongoCache = MongoCache
+module.exports.MongoCacheShared = MongoCacheShared
