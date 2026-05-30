@@ -67,7 +67,6 @@ class client{
   }
   async count( collection, matchCondition ){
     try{
-      _fix_match_condition(matchCondition)
       return await mongo.db( this._db ).collection( collection ).countDocuments(matchCondition)
     }catch(e){
       log.error(e, this.cache_name)

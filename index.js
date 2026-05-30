@@ -75,7 +75,6 @@ class MongoCache {
   }
   async count( collection, matchCondition ){
     try{
-      _fix_match_condition(matchCondition)
       return await this._dbo.collection( collection ).countDocuments(matchCondition)
     }catch(e){
       log.error(e, this.cache_name)
