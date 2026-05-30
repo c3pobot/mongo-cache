@@ -1,32 +1,29 @@
 const log = require('./logger')
 const { MongoClient } = require("mongodb");
-
+function _fix_match_condition( matchCondition ){
+  if(matchCondition?._id) matchCondition._id = matchCondition._id.toString()
+}
 const MongoCacheShared = require('./shared');
 class MongoCache {
-  constructor({ connection_string, collections, cache_name, db_name, shared }){
+  constructor({ connection_string, collections, cache_name, db_name }){
     if(!db_name) throw `No db_name provided`
-    this.cache_name = cache_name || db_name, this._shared = shared, this._dbo
-    this._mongo_ready = false, this._collections = collections || []
-    if(this._shared){
-      this._dbo = mongo.db(db_name)
-    }else{
-      this._mongo = new MongoClient(connection_string)
-      this._dbo = this._mongo.db(db_name)
-      this._init()
-    }
+    this.cache_name = cache_name || db_name, this._mongo_ready = false, this._collections = collections || []
+    this._mongo = new MongoClient(connection_string)
+    this._dbo = this._mongo.db(db_name)
+    this._init()
   }
   async _init(){
     try{
-      await this._mongo.connect()
-      let status = await this._mongo.db('admin').command({ ping: 1 })
+      await this._mongo?.connect()
+      let status = await this._mongo?.db('admin')?.command({ ping: 1 })
       if(status.ok > 0){
         log.info(`connection successful...`, this.cache_name)
         return this._createTables()
       }
-      setTimeout(this._init, 5000)
+      setTimeout(()=>this._init(), 5000)
     }catch(e){
       log.error(e, this.cache_name)
-      setTimeout(this._init, 5000)
+      setTimeout(()=>this._init(), 5000)
     }
   }
   async _createTables(){
@@ -45,7 +42,6 @@ class MongoCache {
       setTimeout(this._createTables, 5000)
     }
   }
-
   async aggregate( collection, matchCondition, data = []){
     try{
       if(matchCondition) data.unshift({$match: matchCondition})
@@ -63,6 +59,7 @@ class MongoCache {
   }
   async del( collection, matchCondition ){
     try{
+      _fix_match_condition(matchCondition)
       return await this._dbo.collection(collection).deleteOne(matchCondition)
     }catch(e){
       log.error(e, this.cache_name)
@@ -70,6 +67,7 @@ class MongoCache {
   }
   async delMany( collection, matchCondition ){
     try{
+      _fix_match_condition(matchCondition)
       return await this._dbo.collection(collection).deleteMany(matchCondition)
     }catch(e){
       log.error(e, this.cache_name)
@@ -77,6 +75,7 @@ class MongoCache {
   }
   async count( collection, matchCondition ){
     try{
+      _fix_match_condition(matchCondition)
       return await this._dbo.collection( collection ).countDocuments(matchCondition)
     }catch(e){
       log.error(e, this.cache_name)
@@ -102,6 +101,7 @@ class MongoCache {
   }
   async get(collection, matchCondition, project){
     try{
+      _fix_match_condition(matchCondition)
       let res = await this._dbo.collection( collection ).find( matchCondition, { projection: project } ).toArray()
       if(res?.length > 0) return res[0]
     }catch(e){
@@ -119,6 +119,7 @@ class MongoCache {
 
   async limit( collection, matchCondition, project, limitCount = 50 ){
     try{
+      _fix_match_condition(matchCondition)
       return await this._dbo.collection( collection ).find( matchCondition, { projection: project } ).limit( limitCount ).toArray()
     }catch(e){
       log.error(e, this.cache_name)
@@ -126,7 +127,18 @@ class MongoCache {
   }
   async push( collection, matchCondition, data){
     try{
-      return await this._dbo.collection( collection ).updateOne( matchCondition, { $push: data, $set: { TTL: new Date()} }, { upsert:true } )
+      _fix_match_condition(matchCondition)
+      let res = await this._dbo.collection( collection ).updateOne( matchCondition, { $push: data, $set: { TTL: new Date()} }, { upsert:true } )
+      return res?.acknowledged
+    }catch(e){
+      log.error(e, this.cache_name)
+    }
+  }
+  async pull( collection, matchCondition, data){
+    try{
+      _fix_match_condition(matchCondition)
+      let res = await this._dbo.collection( collection ).updateOne( matchCondition, { $pull: data, $set: { TTL: new Date()} }, { upsert:true } )
+      return res?.acknowledged
     }catch(e){
       log.error(e, this.cache_name)
     }
@@ -134,6 +146,7 @@ class MongoCache {
   async replace( collection, matchCondition, data){
     try{
       if(!data || !matchCondition || !collection) return
+      _fix_match_condition(matchCondition)
       if(!data?.TTL) data.TTL = new Date()
       let res = await this._dbo.collection( collection ).replaceOne( matchCondition, data, { upsert: true } )
       delete data.TTL
@@ -145,8 +158,21 @@ class MongoCache {
   async set( collection, matchCondition, data ){
     try{
       if(!data || !matchCondition || !collection) return
+      _fix_match_condition(matchCondition)
       if(!data?.TTL) data.TTL = new Date()
       let res = await this._dbo.collection( collection ).updateOne( matchCondition, { $set: data }, { upsert: true } )
+      delete data.TTL
+      return res?.acknowledged
+    }catch(e){
+      log.error(e, this.cache_name)
+    }
+  }
+  async setMany( collection, matchCondition, data ){
+    try{
+      if(!data || !matchCondition || !collection) return
+      _fix_match_condition(matchCondition)
+      if(!data?.TTL) data.TTL = new Date()
+      let res = await this._dbo.collection( collection ).updateMany( matchCondition, { $set: data }, { upsert: true } )
       delete data.TTL
       return res?.acknowledged
     }catch(e){

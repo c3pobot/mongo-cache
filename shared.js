@@ -6,7 +6,7 @@ let mongo, mongo_ready
 async function init(){
   try{
     await mongo?.connect()
-    let status = await mongo.db('admin').command({ ping: 1 })
+    let status = await mongo?.db('admin')?.command({ ping: 1 })
     if(status.ok > 0){
       mongo_ready = true
       return log.info(`connection successful...`, 'mongo-shared')
@@ -24,6 +24,9 @@ function connect(connection_string){
 }
 function status(){
   return mongo_ready
+}
+function _fix_match_condition( matchCondition ){
+  if(matchCondition?._id) matchCondition._id = matchCondition._id.toString()
 }
 class client{
   constructor({ cache_name, db_name }){
@@ -48,6 +51,7 @@ class client{
   }
   async del( collection, matchCondition ){
     try{
+      _fix_match_condition(matchCondition)
       return await mongo.db( this._db ).collection(collection).deleteOne(matchCondition)
     }catch(e){
       log.error(e, this.cache_name)
@@ -55,6 +59,7 @@ class client{
   }
   async delMany( collection, matchCondition ){
     try{
+      _fix_match_condition(matchCondition)
       return await mongo.db( this._db ).collection(collection).deleteMany(matchCondition)
     }catch(e){
       log.error(e, this.cache_name)
@@ -62,6 +67,7 @@ class client{
   }
   async count( collection, matchCondition ){
     try{
+      _fix_match_condition(matchCondition)
       return await mongo.db( this._db ).collection( collection ).countDocuments(matchCondition)
     }catch(e){
       log.error(e, this.cache_name)
@@ -87,6 +93,7 @@ class client{
   }
   async get(collection, matchCondition, project){
     try{
+      _fix_match_condition(matchCondition)
       let res = await mongo.db( this._db ).collection( collection ).find( matchCondition, { projection: project } ).toArray()
       if(res?.length > 0) return res[0]
     }catch(e){
@@ -104,6 +111,7 @@ class client{
 
   async limit( collection, matchCondition, project, limitCount = 50 ){
     try{
+      _fix_match_condition(matchCondition)
       return await mongo.db( this._db ).collection( collection ).find( matchCondition, { projection: project } ).limit( limitCount ).toArray()
     }catch(e){
       log.error(e, this.cache_name)
@@ -111,7 +119,18 @@ class client{
   }
   async push( collection, matchCondition, data){
     try{
-      return await mongo.db( this._db ).collection( collection ).updateOne( matchCondition, { $push: data, $set: { TTL: new Date()} }, { upsert:true } )
+      _fix_match_condition(matchCondition)
+      let res = await mongo.db( this._db ).collection( collection ).updateOne( matchCondition, { $push: data, $set: { TTL: new Date()} }, { upsert:true } )
+      return res?.acknowledged
+    }catch(e){
+      log.error(e, this.cache_name)
+    }
+  }
+  async pull( collection, matchCondition, data){
+    try{
+      _fix_match_condition(matchCondition)
+      let res = await mongo.db( this._db ).collection( collection ).updateOne( matchCondition, { $pull: data, $set: { TTL: new Date()} }, { upsert:true } )
+      return res?.acknowledged
     }catch(e){
       log.error(e, this.cache_name)
     }
@@ -119,6 +138,7 @@ class client{
   async replace( collection, matchCondition, data){
     try{
       if(!data || !matchCondition || !collection) return
+      _fix_match_condition(matchCondition)
       if(!data?.TTL) data.TTL = new Date()
       let res = await mongo.db( this._db ).collection( collection ).replaceOne( matchCondition, data, { upsert: true } )
       delete data.TTL
@@ -130,8 +150,21 @@ class client{
   async set( collection, matchCondition, data ){
     try{
       if(!data || !matchCondition || !collection) return
+      _fix_match_condition(matchCondition)
       if(!data?.TTL) data.TTL = new Date()
       let res = await mongo.db( this._db ).collection( collection ).updateOne( matchCondition, { $set: data }, { upsert: true } )
+      delete data.TTL
+      return res?.acknowledged
+    }catch(e){
+      log.error(e, this.cache_name)
+    }
+  }
+  async setMany( collection, matchCondition, data ){
+    try{
+      if(!data || !matchCondition || !collection) return
+      _fix_match_condition(matchCondition)
+      if(!data?.TTL) data.TTL = new Date()
+      let res = await mongo.db( this._db ).collection( collection ).updateMany( matchCondition, { $set: data }, { upsert: true } )
       delete data.TTL
       return res?.acknowledged
     }catch(e){
