@@ -5,7 +5,7 @@ function _fix_match_condition( matchCondition ){
   if(matchCondition?._id) matchCondition._id = matchCondition._id.toString()
 }
 
-module.exports = class MongoCache {
+module.exports = class {
   constructor({ connection_string, collections, cache_name, db_name }){
     if(!db_name) throw `No db_name provided`
     this.cache_name = cache_name || db_name, this._mongo_ready = false, this._collections = collections || []
