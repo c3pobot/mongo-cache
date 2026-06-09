@@ -1,50 +1,72 @@
+'use strict'
 const log = require('./logger')
 const { MongoClient } = require("mongodb");
-
-let mongo, mongo_ready
-
-async function init(){
-  try{
-    await mongo?.connect()
-    let status = await mongo?.db('admin')?.command({ ping: 1 })
-    if(status.ok > 0){
-      mongo_ready = true
-      return log.info(`connection successful...`, 'mongo-shared')
-    }
-    setTimeout(init, 5000)
-  }catch(e){
-    log.error(e, 'mongo-shared')
-    setTimeout(init, 5000)
-  }
-}
-function connect(connection_string){
-  if(!connection_string) return
-  mongo = new MongoClient(connection_string)
-  init()
-}
-function status(){
-  return mongo_ready
-}
 function _fix_match_condition( matchCondition ){
   if(matchCondition?._id) matchCondition._id = matchCondition._id.toString()
 }
-class client{
-  constructor({ cache_name, db_name }){
-    if(!db_name) throw `No db_name provided`
-    this.cache_name = cache_name || db_name, this._db = db_name
-  }
 
+module.exports = class MongoCache {
+  constructor({ connection_string, collections, cache_name, db_name }){
+    if(!db_name) throw `No db_name provided`
+    this.cache_name = cache_name || db_name, this._mongo_ready = false, this._collections = collections || []
+    this._mongo = new MongoClient(connection_string)
+    this._dbo = this._mongo.db(db_name)
+    this._init()
+  }
+  async _init(){
+    try{
+      await this._mongo?.connect()
+      let status = await this._mongo?.db('admin')?.command({ ping: 1 })
+      if(status.ok > 0){
+        log.info(`connection successful...`, this.cache_name)
+        return this._createTables()
+      }
+      setTimeout(()=>this._init(), 5000)
+    }catch(e){
+      log.error(e, this.cache_name)
+      setTimeout(()=>this._init(), 5000)
+    }
+  }
+  async _createTables(){
+    try{
+      if(!this._collections || this._collections?.length == 0) return this._mongo_ready = true
+      for(let i in this._collections){
+        if(!this._collections[i].expireSeconds) continue
+        await this._dbo.collection(this._collections[i].name)?.createIndex({ TTL: 1 }, { name: '_TTL', expireAfterSeconds: this._collections[i].expireSeconds } )
+        log.info(`Created TTL index for collection ${this._collections[i].name}`, )
+      }
+      this._mongo_ready = true
+      return
+      setTimeout(this._createTables, 5000)
+    }catch(e){
+      log.error(e, this.cache_name)
+      setTimeout(this._createTables, 5000)
+    }
+  }
   async aggregate( collection, matchCondition, data = []){
     try{
       if(matchCondition) data.unshift({$match: matchCondition})
-      return await mongo.db( this._db ).collection(collection).aggregate(data, { allowDiskUse: true }).toArray()
+      return await this._dbo.collection(collection).aggregate(data, { allowDiskUse: true }).toArray()
     }catch(e){
       log.error(e, this.cache_name)
     }
   }
   async all( collection, matchCondition, project ){
     try{
-      return await mongo.db( this._db ).collection( collection ).find( matchCondition, { projection: project } ).toArray()
+      return await this._dbo.collection( collection ).find( matchCondition, { projection: project } ).toArray()
+    }catch(e){
+      log.error(e, this.cache_name)
+    }
+  }
+  async createCollection( collection ){
+    try{
+      let exists = await this._dbo.listCollections({ name: collection })?.toArray()
+      if(exists?.length > 0) return true
+      let created = await this._dbo.createCollection(collection)
+      if(created?.s?.namespace?.collection == collection){
+        log.info(`${collection} created...`)
+        return true
+      }
     }catch(e){
       log.error(e, this.cache_name)
     }
@@ -52,7 +74,7 @@ class client{
   async del( collection, matchCondition ){
     try{
       _fix_match_condition(matchCondition)
-      return await mongo.db( this._db ).collection(collection).deleteOne(matchCondition)
+      return await this._dbo.collection(collection).deleteOne(matchCondition)
     }catch(e){
       log.error(e, this.cache_name)
     }
@@ -60,14 +82,14 @@ class client{
   async delMany( collection, matchCondition ){
     try{
       _fix_match_condition(matchCondition)
-      return await mongo.db( this._db ).collection(collection).deleteMany(matchCondition)
+      return await this._dbo.collection(collection).deleteMany(matchCondition)
     }catch(e){
       log.error(e, this.cache_name)
     }
   }
   async count( collection, matchCondition ){
     try{
-      return await mongo.db( this._db ).collection( collection ).countDocuments(matchCondition)
+      return await this._dbo.collection( collection ).countDocuments(matchCondition)
     }catch(e){
       log.error(e, this.cache_name)
     }
@@ -76,7 +98,7 @@ class client{
     try{
       if(!indexObj) throw('No index provided...')
       //opts = { background: true, expireAfterSeconds: 600 }
-      return await mongo.db( this._db ).collection( collection ).createIndex(indexObj, opts)
+      return await this._dbo.collection( collection ).createIndex(indexObj, opts)
     }catch(e){
       log.error(e, this.cache_name)
     }
@@ -84,7 +106,7 @@ class client{
   async dropIndex( collection, indexName){
     try{
       if(!collection || !indexName) return
-      let res = await mongo.db( this._db ).collection( collection ).dropIndex(indexName)
+      let res = await this._dbo.collection( collection ).dropIndex(indexName)
       if(res?.ok) return true
     }catch(e){
       log.error(e, this.cache_name)
@@ -93,7 +115,7 @@ class client{
   async get(collection, matchCondition, project){
     try{
       _fix_match_condition(matchCondition)
-      let res = await mongo.db( this._db ).collection( collection ).find( matchCondition, { projection: project } ).toArray()
+      let res = await this._dbo.collection( collection ).find( matchCondition, { projection: project } ).toArray()
       if(res?.length > 0) return res[0]
     }catch(e){
       log.error(e, this.cache_name)
@@ -102,7 +124,7 @@ class client{
 
   async listIndexes( collection ){
     try{
-      return await mongo.db( this._db ).collection( collection ).listIndexes().toArray()
+      return await this._dbo.collection( collection ).listIndexes().toArray()
     }catch(e){
       log.error(e, this.cache_name)
     }
@@ -111,7 +133,7 @@ class client{
   async limit( collection, matchCondition, project, limitCount = 50 ){
     try{
       _fix_match_condition(matchCondition)
-      return await mongo.db( this._db ).collection( collection ).find( matchCondition, { projection: project } ).limit( limitCount ).toArray()
+      return await this._dbo.collection( collection ).find( matchCondition, { projection: project } ).limit( limitCount ).toArray()
     }catch(e){
       log.error(e, this.cache_name)
     }
@@ -119,7 +141,7 @@ class client{
   async push( collection, matchCondition, data){
     try{
       _fix_match_condition(matchCondition)
-      let res = await mongo.db( this._db ).collection( collection ).updateOne( matchCondition, { $push: data, $set: { TTL: new Date()} }, { upsert:true } )
+      let res = await this._dbo.collection( collection ).updateOne( matchCondition, { $push: data, $set: { TTL: new Date()} }, { upsert:true } )
       return res?.acknowledged
     }catch(e){
       log.error(e, this.cache_name)
@@ -128,7 +150,7 @@ class client{
   async pull( collection, matchCondition, data){
     try{
       _fix_match_condition(matchCondition)
-      let res = await mongo.db( this._db ).collection( collection ).updateOne( matchCondition, { $pull: data, $set: { TTL: new Date()} }, { upsert:true } )
+      let res = await this._dbo.collection( collection ).updateOne( matchCondition, { $pull: data, $set: { TTL: new Date()} }, { upsert:true } )
       return res?.acknowledged
     }catch(e){
       log.error(e, this.cache_name)
@@ -139,7 +161,7 @@ class client{
       if(!data || !matchCondition || !collection) return
       _fix_match_condition(matchCondition)
       if(!data?.TTL) data.TTL = new Date()
-      let res = await mongo.db( this._db ).collection( collection ).replaceOne( matchCondition, data, { upsert: true } )
+      let res = await this._dbo.collection( collection ).replaceOne( matchCondition, data, { upsert: true } )
       delete data.TTL
       return res?.acknowledged
     }catch(e){
@@ -151,7 +173,7 @@ class client{
       if(!data || !matchCondition || !collection) return
       _fix_match_condition(matchCondition)
       if(!data?.TTL) data.TTL = new Date()
-      let res = await mongo.db( this._db ).collection( collection ).updateOne( matchCondition, { $set: data }, { upsert: true } )
+      let res = await this._dbo.collection( collection ).updateOne( matchCondition, { $set: data }, { upsert: true } )
       delete data.TTL
       return res?.acknowledged
     }catch(e){
@@ -163,7 +185,7 @@ class client{
       if(!data || !matchCondition || !collection) return
       _fix_match_condition(matchCondition)
       if(!data?.TTL) data.TTL = new Date()
-      let res = await mongo.db( this._db ).collection( collection ).updateMany( matchCondition, { $set: data }, { upsert: true } )
+      let res = await this._dbo.collection( collection ).updateMany( matchCondition, { $set: data }, { upsert: true } )
       delete data.TTL
       return res?.acknowledged
     }catch(e){
@@ -173,13 +195,9 @@ class client{
   async updateIndex( collection, keys, opts ){
     try{
       if(!collection || !keys || !opts?.name) return
-      let collections = await mongo.db( this._db ).listCollections()?.toArray()
-      let indexCollection = collections.find(x=>x.name == collection)
-      if(!indexCollection?.name){
-        let created = await mongo.db( this._db ).createCollection(collection)
-        if(created?.s?.namespace?.collection !== collection) return log.error(`error creating collection ${collection}...`, this.cache_name)
-        log.debug(`collection ${collection} created...`, this.cache_name)
-      }
+      let created = await this.createCollection(collection)
+      if(!created) return log.error(`error creating collection ${collection}...`, this.cache_name)
+
       let indexes = await this.listIndexes( collection )
       let index = indexes?.find(x=>x.name == opts.name)
       if(index?.key && JSON.stringify(index.key) == JSON.stringify(keys)){
@@ -201,7 +219,13 @@ class client{
     }
   }
   status(){
-    return mongo_ready
+    return this._mongo_ready
+  }
+  watch( collection ){
+    try{
+      return this._dbo.collection( collection ).watch( { fullDocument: 'updateLookup' } )
+    }catch(e){
+      log.error(e)
+    }
   }
 }
-module.exports = { connect, status, client }
