@@ -64,7 +64,7 @@ module.exports = class {
       if(exists?.length > 0) return true
       let created = await this._dbo.createCollection(collection)
       if(created?.s?.namespace?.collection == collection){
-        log.info(`${collection} created...`)
+        log.info(`${collection} created...`, this.cache_name)
         return true
       }
     }catch(e){
@@ -225,7 +225,7 @@ module.exports = class {
     try{
       return this._dbo.collection( collection ).watch( { fullDocument: 'updateLookup' } )
     }catch(e){
-      log.error(e)
+      log.error(e, this.cache_name)
     }
   }
 }
