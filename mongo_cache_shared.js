@@ -56,7 +56,7 @@ class client{
       if(exists?.length > 0) return true
       let created = await mongo.db( this._db ).createCollection(collection)
       if(created?.s?.namespace?.collection == collection){
-        log.info(`${collection} created...`)
+        log.info(`${collection} created...`, this.cache_name)
         return true
       }
     }catch(e){
