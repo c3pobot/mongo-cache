@@ -138,6 +138,13 @@ module.exports = class {
       log.error(e, this.cache_name)
     }
   }
+  async math(collection, matchCondition, data){
+    try{
+      return await this._dbo.collection( collection ).updateOne( matchCondition, { $inc: data, $set: { TTL: new Date() } }, { "upsert":true } )
+    }catch(e){
+      log.error(e, this.cache_name)
+    }
+  }
   async push( collection, matchCondition, data){
     try{
       _fix_match_condition(matchCondition)
@@ -214,6 +221,13 @@ module.exports = class {
       if(!indexName || indexName !== opts.name) return log.error(`error creating index ${opts.name} for ${collection}`, this.cache_name)
       log.debug(`created index ${opts.name} for ${collection}...`, this.cache_name)
       return true
+    }catch(e){
+      log.error(e, this.cache_name)
+    }
+  }
+  async unset(collection, matchCondition, data){
+    try{
+      return await this._dbo.collection( collection ).updateOne(matchCondition, { $unset: data, $set: { TTL: new Date() } })
     }catch(e){
       log.error(e, this.cache_name)
     }
